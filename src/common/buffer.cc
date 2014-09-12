@@ -30,6 +30,10 @@
 #include <sys/uio.h>
 #include <limits.h>
 
+#ifdef HAVE_MALLOC_H
+#include <malloc.h>
+#endif
+
 namespace ceph {
 
 #ifdef BUFFER_DEBUG
@@ -155,8 +159,16 @@ static simple_spinlock_t buffer_debug_lock = SIMPLE_SPINLOCK_INITIALIZER;
     virtual int zero_copy_to_fd(int fd, loff_t *offset) {
       return -ENOTSUP;
     }
+    virtual bool is_aligned(unsigned align) {
+      assert((align >= sizeof(void *)) && (align & (align - 1)) == 0);
+      return ((intptr_t)data & (align - 1)) == 0;
+    }
     virtual bool is_page_aligned() {
       return ((long)data & ~CEPH_PAGE_MASK) == 0;
+    }
+    bool is_n_align_sized(unsigned align) {
+      assert((align >= sizeof(void *)) && (align & (align - 1)) == 0);
+      return (len % align) == 0;
     }
     bool is_n_page_sized() {
       return (len & ~CEPH_PAGE_MASK) == 0;
@@ -206,6 +218,43 @@ static simple_spinlock_t buffer_debug_lock = SIMPLE_SPINLOCK_INITIALIZER;
     }
     raw* clone_empty() {
       return new raw_malloc(len);
+    }
+  };
+
+  class buffer::raw_aligned : public buffer::raw {
+    unsigned _align;
+  public:
+    raw_aligned(unsigned l, unsigned align) : raw(l) {
+      _align = align;
+      assert((align >= sizeof(void *)) && (align & (align - 1)) == 0);
+      if (len) {
+#if HAVE_POSIX_MEMALIGN
+        if (posix_memalign((void **) &data, align, len))
+          data = 0;
+#elif HAVE__ALIGNED_MALLOC
+        data = _aligned_malloc(len, align);
+#elif HAVE_MEMALIGN
+        data = memalign(align, len);
+#elif HAVE_ALIGNED_MALLOC
+        data = aligned_malloc((len + align - 1) & (align - 1), align);
+#else
+        data = malloc(len);
+#endif
+        if (!data)
+          throw bad_alloc();
+      } else {
+        data = 0;
+      }
+      inc_total_alloc(len);
+      bdout << "raw_aligned " << this << " alloc " << (void *)data << " " << l << " " << buffer::get_total_alloc() << bendl;
+    }
+    ~raw_aligned() {
+      free(data);
+      dec_total_alloc(len);
+      bdout << "raw_aligned " << this << " free " << (void *)data << " " << buffer::get_total_alloc() << bendl;
+    }
+    raw* clone_empty() {
+      return new raw_aligned(len, _align);
     }
   };
 
@@ -332,6 +381,10 @@ static simple_spinlock_t buffer_debug_lock = SIMPLE_SPINLOCK_INITIALIZER;
 
     bool can_zero_copy() const {
       return true;
+    }
+
+    bool is_aligned() {
+      return false;
     }
 
     bool is_page_aligned() {
@@ -519,6 +572,9 @@ static simple_spinlock_t buffer_debug_lock = SIMPLE_SPINLOCK_INITIALIZER;
   }
   buffer::raw* buffer::create_static(unsigned len, char *buf) {
     return new raw_static(buf, len);
+  }
+  buffer::raw* buffer::create_aligned(unsigned len, unsigned align) {
+    return new raw_aligned(len, align);
   }
   buffer::raw* buffer::create_page_aligned(unsigned len) {
 #ifndef __CYGWIN__
@@ -1013,12 +1069,33 @@ static simple_spinlock_t buffer_debug_lock = SIMPLE_SPINLOCK_INITIALIZER;
     return true;
   }
 
+  bool buffer::list::is_aligned(unsigned align) const
+  {
+    assert((align >= sizeof(void *)) && (align & (align - 1)) == 0);
+    for (std::list<ptr>::const_iterator it = _buffers.begin();
+         it != _buffers.end();
+         ++it)
+      if (!it->is_aligned(align))
+        return false;
+    return true;
+  }
+
   bool buffer::list::is_page_aligned() const
   {
     for (std::list<ptr>::const_iterator it = _buffers.begin();
 	 it != _buffers.end();
 	 ++it) 
       if (!it->is_page_aligned())
+	return false;
+    return true;
+  }
+
+  bool buffer::list::is_n_align_sized(unsigned align) const
+  {
+    for (std::list<ptr>::const_iterator it = _buffers.begin();
+	 it != _buffers.end();
+	 ++it)
+      if (!it->is_n_align_sized(align))
 	return false;
     return true;
   }
@@ -1100,6 +1177,45 @@ static simple_spinlock_t buffer_debug_lock = SIMPLE_SPINLOCK_INITIALIZER;
     _buffers.clear();
     _buffers.push_back(nb);
   }
+
+void buffer::list::rebuild_aligned(unsigned align)
+{
+  std::list<ptr>::iterator p = _buffers.begin();
+  assert((align >= sizeof(void *)) && (align & (align - 1)) == 0);
+  while (p != _buffers.end()) {
+    // keep anything that's already align sized+aligned
+    if (p->is_aligned(align) && p->is_n_align_sized(align)) {
+      /*cout << " segment " << (void*)p->c_str()
+             << " offset " << ((unsigned long)p->c_str() & (align - 1))
+             << " length " << p->length()
+             << " " << (p->length() & (align - 1)) << " ok" << std::endl;
+      */
+      ++p;
+      continue;
+    }
+
+    // consolidate unaligned items, until we get something that is sized+aligned
+    list unaligned;
+    unsigned offset = 0;
+    do {
+      /*cout << " segment " << (void*)p->c_str()
+             << " offset " << ((unsigned long)p->c_str() & (align - 1))
+             << " length " << p->length() << " " << (p->length() & (align - 1))
+             << " overall offset " << offset << " " << (offset & (align - 1))
+             << " not ok" << std::endl;
+      */
+      offset += p->length();
+      unaligned.push_back(*p);
+      _buffers.erase(p++);
+    } while (p != _buffers.end() &&
+	     (!p->is_aligned(align) ||
+	      !p->is_n_align_sized(align) ||
+	      (offset % align)));
+    ptr nb(buffer::create_aligned(unaligned._len, align));
+    unaligned.rebuild(nb);
+    _buffers.insert(p, unaligned._buffers.front());
+  }
+}
 
 void buffer::list::rebuild_page_aligned()
 {
