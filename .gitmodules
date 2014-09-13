@@ -18,3 +18,6 @@
 [submodule "src/rocksdb"]
 	path = src/rocksdb
 	url = git://github.com/ceph/rocksdb
+[submodule "ceph-erasure-code-corpus"]
+	path = ceph-erasure-code-corpus
+	url = https://github.com/ceph/ceph-erasure-code-corpus.git
