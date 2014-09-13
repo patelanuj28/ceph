@@ -1,6 +1,8 @@
 check_SCRIPTS += \
 	test/erasure-code/test-erasure-code.sh
 
+noinst_HEADERS += \
+	test/erasure-code/ceph_erasure_code_benchmark.h
 ceph_erasure_code_benchmark_SOURCES = \
 	test/erasure-code/ceph_erasure_code_benchmark.cc
 ceph_erasure_code_benchmark_LDADD = $(LIBOSD) $(LIBCOMMON) $(BOOST_PROGRAM_OPTIONS_LIBS) $(CEPH_GLOBAL)
@@ -178,6 +180,3 @@ noinst_HEADERS += test/erasure-code/ErasureCodeExample.h
 unittest_erasure_code_example_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_erasure_code_example_LDADD = $(LIBOSD) $(LIBCOMMON) $(UNITTEST_LDADD) $(CEPH_GLOBAL)
 check_PROGRAMS += unittest_erasure_code_example
-
-noinst_HEADERS += \
-	test/erasure-code/ceph_erasure_code_benchmark.h
