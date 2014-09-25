@@ -37,16 +37,17 @@ typedef RadosTestECPP LibRadosTierECPP;
 void flush_evict_all(librados::Rados& cluster, librados::IoCtx& cache_ioctx)
 {
   bufferlist inbl;
-  cache_ioctx.set_namespace("");
-  for (ObjectIterator it = cache_ioctx.objects_begin();
-       it != cache_ioctx.objects_end(); ++it) {
-    cache_ioctx.locator_set_key(it->second);
+  cache_ioctx.set_namespace(all_nspaces);
+  for (NObjectIterator it = cache_ioctx.nobjects_begin();
+       it != cache_ioctx.nobjects_end(); ++it) {
+    cache_ioctx.locator_set_key(it->get_locator());
+    cache_ioctx.set_namespace(it->get_nspace());
     {
       ObjectReadOperation op;
       op.cache_flush();
       librados::AioCompletion *completion = cluster.aio_create_completion();
       cache_ioctx.aio_operate(
-        it->first, completion, &op,
+        it->get_oid(), completion, &op,
 	librados::OPERATION_IGNORE_OVERLAY, NULL);
       completion->wait_for_safe();
       completion->get_return_value();
@@ -57,7 +58,7 @@ void flush_evict_all(librados::Rados& cluster, librados::IoCtx& cache_ioctx)
       op.cache_evict();
       librados::AioCompletion *completion = cluster.aio_create_completion();
       cache_ioctx.aio_operate(
-        it->first, completion, &op,
+        it->get_oid(), completion, &op,
 	librados::OPERATION_IGNORE_OVERLAY, NULL);
       completion->wait_for_safe();
       completion->get_return_value();
@@ -109,7 +110,7 @@ protected:
     // wait for maps to settle before next test
     cluster.wait_for_latest_osdmap();
 
-    cleanup_default_namespace(cache_ioctx);
+    cleanup_all_objects(cache_ioctx);
 
     cache_ioctx.close();
   }
@@ -277,13 +278,13 @@ TEST_F(LibRadosTwoPoolsPP, Promote) {
 
   // verify the object is present in the cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it != cache_ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo") || it->first == string("bar"));
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it != cache_ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo") || it->get_oid() == string("bar"));
     ++it;
-    ASSERT_TRUE(it->first == string("foo") || it->first == string("bar"));
+    ASSERT_TRUE(it->get_oid() == string("foo") || it->get_oid() == string("bar"));
     ++it;
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 }
 
@@ -615,13 +616,13 @@ TEST_F(LibRadosTwoPoolsPP, Whiteout) {
 
   // verify the whiteouts are there in the cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it != cache_ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo") || it->first == string("bar"));
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it != cache_ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo") || it->get_oid() == string("bar"));
     ++it;
-    ASSERT_TRUE(it->first == string("foo") || it->first == string("bar"));
+    ASSERT_TRUE(it->get_oid() == string("foo") || it->get_oid() == string("bar"));
     ++it;
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 
   ASSERT_EQ(-ENOENT, ioctx.remove("foo"));
@@ -686,13 +687,13 @@ TEST_F(LibRadosTwoPoolsPP, Evict) {
 
   // verify the object is present in the cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it != cache_ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo") || it->first == string("bar"));
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it != cache_ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo") || it->get_oid() == string("bar"));
     ++it;
-    ASSERT_TRUE(it->first == string("foo") || it->first == string("bar"));
+    ASSERT_TRUE(it->get_oid() == string("foo") || it->get_oid() == string("bar"));
     ++it;
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 
   // evict
@@ -997,17 +998,17 @@ TEST_F(LibRadosTwoPoolsPP, TryFlush) {
 
   // verify the object is present in the cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it != cache_ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo"));
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it != cache_ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo"));
     ++it;
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 
   // verify the object is NOT present in the base tier
   {
-    ObjectIterator it = ioctx.objects_begin();
-    ASSERT_TRUE(it == ioctx.objects_end());
+    NObjectIterator it = ioctx.nobjects_begin();
+    ASSERT_TRUE(it == ioctx.nobjects_end());
   }
 
   // verify dirty
@@ -1048,11 +1049,11 @@ TEST_F(LibRadosTwoPoolsPP, TryFlush) {
 
   // verify in base tier
   {
-    ObjectIterator it = ioctx.objects_begin();
-    ASSERT_TRUE(it != ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo"));
+    NObjectIterator it = ioctx.nobjects_begin();
+    ASSERT_TRUE(it != ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo"));
     ++it;
-    ASSERT_TRUE(it == ioctx.objects_end());
+    ASSERT_TRUE(it == ioctx.nobjects_end());
   }
 
   // evict it
@@ -1069,8 +1070,8 @@ TEST_F(LibRadosTwoPoolsPP, TryFlush) {
 
   // verify no longer in cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 }
 
@@ -1107,17 +1108,17 @@ TEST_F(LibRadosTwoPoolsPP, Flush) {
 
   // verify the object is present in the cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it != cache_ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo"));
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it != cache_ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo"));
     ++it;
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 
   // verify the object is NOT present in the base tier
   {
-    ObjectIterator it = ioctx.objects_begin();
-    ASSERT_TRUE(it == ioctx.objects_end());
+    NObjectIterator it = ioctx.nobjects_begin();
+    ASSERT_TRUE(it == ioctx.nobjects_end());
   }
 
   // verify dirty
@@ -1158,11 +1159,11 @@ TEST_F(LibRadosTwoPoolsPP, Flush) {
 
   // verify in base tier
   {
-    ObjectIterator it = ioctx.objects_begin();
-    ASSERT_TRUE(it != ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo"));
+    NObjectIterator it = ioctx.nobjects_begin();
+    ASSERT_TRUE(it != ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo"));
     ++it;
-    ASSERT_TRUE(it == ioctx.objects_end());
+    ASSERT_TRUE(it == ioctx.nobjects_end());
   }
 
   // evict it
@@ -1179,8 +1180,8 @@ TEST_F(LibRadosTwoPoolsPP, Flush) {
 
   // verify no longer in cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 
   // read it again and verify the version is consistent
@@ -1224,13 +1225,13 @@ TEST_F(LibRadosTwoPoolsPP, Flush) {
 
   // verify no longer in cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
   // or base tier
   {
-    ObjectIterator it = ioctx.objects_begin();
-    ASSERT_TRUE(it == ioctx.objects_end());
+    NObjectIterator it = ioctx.nobjects_begin();
+    ASSERT_TRUE(it == ioctx.nobjects_end());
   }
 }
 
@@ -1292,17 +1293,17 @@ TEST_F(LibRadosTwoPoolsPP, FlushSnap) {
 
   // verify the object is present in the cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it != cache_ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo"));
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it != cache_ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo"));
     ++it;
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 
   // verify the object is NOT present in the base tier
   {
-    ObjectIterator it = ioctx.objects_begin();
-    ASSERT_TRUE(it == ioctx.objects_end());
+    NObjectIterator it = ioctx.nobjects_begin();
+    ASSERT_TRUE(it == ioctx.nobjects_end());
   }
 
   // flush on head (should fail)
@@ -2133,12 +2134,12 @@ TEST_F(LibRadosTwoPoolsPP, PromoteOn2ndRead) {
 
   // verify the object is NOT present in the cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    if (it != cache_ioctx.objects_end()) {
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    if (it != cache_ioctx.nobjects_end()) {
       if (dur > 1.0) {
 	cout << " object got promoted, but read was slow, ignoring" << std::endl;
       } else {
-	ASSERT_TRUE(it == cache_ioctx.objects_end());
+	ASSERT_TRUE(it == cache_ioctx.nobjects_end());
       }
     }
   }
@@ -2148,11 +2149,11 @@ TEST_F(LibRadosTwoPoolsPP, PromoteOn2ndRead) {
     bufferlist bl;
     ASSERT_EQ(1, ioctx.read("foo", bl, 1, 0));
 
-    ObjectIterator it = cache_ioctx.objects_begin();
-    if (it != cache_ioctx.objects_end()) {
-      ASSERT_TRUE(it->first == string("foo"));
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    if (it != cache_ioctx.nobjects_end()) {
+      ASSERT_TRUE(it->get_oid() == string("foo"));
       ++it;
-      ASSERT_TRUE(it == cache_ioctx.objects_end());
+      ASSERT_TRUE(it == cache_ioctx.nobjects_end());
       break;
     }
 
@@ -2216,7 +2217,7 @@ protected:
     // wait for maps to settle before next test
     cluster.wait_for_latest_osdmap();
 
-    cleanup_default_namespace(cache_ioctx);
+    cleanup_all_objects(cache_ioctx);
 
     cache_ioctx.close();
   }
@@ -2385,13 +2386,13 @@ TEST_F(LibRadosTwoPoolsECPP, Promote) {
 
   // verify the object is present in the cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it != cache_ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo") || it->first == string("bar"));
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it != cache_ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo") || it->get_oid() == string("bar"));
     ++it;
-    ASSERT_TRUE(it->first == string("foo") || it->first == string("bar"));
+    ASSERT_TRUE(it->get_oid() == string("foo") || it->get_oid() == string("bar"));
     ++it;
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 }
 
@@ -2650,13 +2651,13 @@ TEST_F(LibRadosTwoPoolsECPP, Whiteout) {
 
   // verify the whiteouts are there in the cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it != cache_ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo") || it->first == string("bar"));
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it != cache_ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo") || it->get_oid() == string("bar"));
     ++it;
-    ASSERT_TRUE(it->first == string("foo") || it->first == string("bar"));
+    ASSERT_TRUE(it->get_oid() == string("foo") || it->get_oid() == string("bar"));
     ++it;
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 
   ASSERT_EQ(-ENOENT, ioctx.remove("foo"));
@@ -2721,13 +2722,13 @@ TEST_F(LibRadosTwoPoolsECPP, Evict) {
 
   // verify the object is present in the cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it != cache_ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo") || it->first == string("bar"));
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it != cache_ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo") || it->get_oid() == string("bar"));
     ++it;
-    ASSERT_TRUE(it->first == string("foo") || it->first == string("bar"));
+    ASSERT_TRUE(it->get_oid() == string("foo") || it->get_oid() == string("bar"));
     ++it;
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 
   // evict
@@ -3032,17 +3033,17 @@ TEST_F(LibRadosTwoPoolsECPP, TryFlush) {
 
   // verify the object is present in the cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it != cache_ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo"));
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it != cache_ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo"));
     ++it;
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 
   // verify the object is NOT present in the base tier
   {
-    ObjectIterator it = ioctx.objects_begin();
-    ASSERT_TRUE(it == ioctx.objects_end());
+    NObjectIterator it = ioctx.nobjects_begin();
+    ASSERT_TRUE(it == ioctx.nobjects_end());
   }
 
   // verify dirty
@@ -3083,11 +3084,11 @@ TEST_F(LibRadosTwoPoolsECPP, TryFlush) {
 
   // verify in base tier
   {
-    ObjectIterator it = ioctx.objects_begin();
-    ASSERT_TRUE(it != ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo"));
+    NObjectIterator it = ioctx.nobjects_begin();
+    ASSERT_TRUE(it != ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo"));
     ++it;
-    ASSERT_TRUE(it == ioctx.objects_end());
+    ASSERT_TRUE(it == ioctx.nobjects_end());
   }
 
   // evict it
@@ -3104,8 +3105,8 @@ TEST_F(LibRadosTwoPoolsECPP, TryFlush) {
 
   // verify no longer in cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 }
 
@@ -3142,17 +3143,17 @@ TEST_F(LibRadosTwoPoolsECPP, Flush) {
 
   // verify the object is present in the cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it != cache_ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo"));
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it != cache_ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo"));
     ++it;
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 
   // verify the object is NOT present in the base tier
   {
-    ObjectIterator it = ioctx.objects_begin();
-    ASSERT_TRUE(it == ioctx.objects_end());
+    NObjectIterator it = ioctx.nobjects_begin();
+    ASSERT_TRUE(it == ioctx.nobjects_end());
   }
 
   // verify dirty
@@ -3193,11 +3194,11 @@ TEST_F(LibRadosTwoPoolsECPP, Flush) {
 
   // verify in base tier
   {
-    ObjectIterator it = ioctx.objects_begin();
-    ASSERT_TRUE(it != ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo"));
+    NObjectIterator it = ioctx.nobjects_begin();
+    ASSERT_TRUE(it != ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo"));
     ++it;
-    ASSERT_TRUE(it == ioctx.objects_end());
+    ASSERT_TRUE(it == ioctx.nobjects_end());
   }
 
   // evict it
@@ -3214,8 +3215,8 @@ TEST_F(LibRadosTwoPoolsECPP, Flush) {
 
   // verify no longer in cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 
   // read it again and verify the version is consistent
@@ -3259,13 +3260,13 @@ TEST_F(LibRadosTwoPoolsECPP, Flush) {
 
   // verify no longer in cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
   // or base tier
   {
-    ObjectIterator it = ioctx.objects_begin();
-    ASSERT_TRUE(it == ioctx.objects_end());
+    NObjectIterator it = ioctx.nobjects_begin();
+    ASSERT_TRUE(it == ioctx.nobjects_end());
   }
 }
 
@@ -3327,17 +3328,17 @@ TEST_F(LibRadosTwoPoolsECPP, FlushSnap) {
 
   // verify the object is present in the cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    ASSERT_TRUE(it != cache_ioctx.objects_end());
-    ASSERT_TRUE(it->first == string("foo"));
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    ASSERT_TRUE(it != cache_ioctx.nobjects_end());
+    ASSERT_TRUE(it->get_oid() == string("foo"));
     ++it;
-    ASSERT_TRUE(it == cache_ioctx.objects_end());
+    ASSERT_TRUE(it == cache_ioctx.nobjects_end());
   }
 
   // verify the object is NOT present in the base tier
   {
-    ObjectIterator it = ioctx.objects_begin();
-    ASSERT_TRUE(it == ioctx.objects_end());
+    NObjectIterator it = ioctx.nobjects_begin();
+    ASSERT_TRUE(it == ioctx.nobjects_end());
   }
 
   // flush on head (should fail)
@@ -4093,12 +4094,12 @@ TEST_F(LibRadosTwoPoolsECPP, PromoteOn2ndRead) {
 
   // verify the object is NOT present in the cache tier
   {
-    ObjectIterator it = cache_ioctx.objects_begin();
-    if (it != cache_ioctx.objects_end()) {
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    if (it != cache_ioctx.nobjects_end()) {
       if (dur > 1.0) {
 	cout << " object got promoted, but read was slow, ignoring" << std::endl;
       } else {
-	ASSERT_TRUE(it == cache_ioctx.objects_end());
+	ASSERT_TRUE(it == cache_ioctx.nobjects_end());
       }
     }
   }
@@ -4108,11 +4109,11 @@ TEST_F(LibRadosTwoPoolsECPP, PromoteOn2ndRead) {
     bufferlist bl;
     ASSERT_EQ(1, ioctx.read("foo", bl, 1, 0));
 
-    ObjectIterator it = cache_ioctx.objects_begin();
-    if (it != cache_ioctx.objects_end()) {
-      ASSERT_TRUE(it->first == string("foo"));
+    NObjectIterator it = cache_ioctx.nobjects_begin();
+    if (it != cache_ioctx.nobjects_end()) {
+      ASSERT_TRUE(it->get_oid() == string("foo"));
       ++it;
-      ASSERT_TRUE(it == cache_ioctx.objects_end());
+      ASSERT_TRUE(it == cache_ioctx.nobjects_end());
       break;
     }
 
