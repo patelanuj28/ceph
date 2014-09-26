@@ -30,6 +30,8 @@ namespace librados
   struct ObjListCtx;
   struct PoolAsyncCompletionImpl;
   class RadosClient;
+  class ListObjectImpl;
+  struct NObjectIteratorImpl;
 
   typedef void *list_ctx_t;
   typedef uint64_t auid_t;
@@ -63,8 +65,6 @@ namespace librados
   typedef void *completion_t;
   typedef void (*callback_t)(completion_t cb, void *arg);
 
-  class ListObjectImpl;
-
   class ListObject
   {
   public:
@@ -79,7 +79,7 @@ namespace librados
   private:
     ListObject(ListObjectImpl *impl);
 
-    friend class NObjectIterator;
+    friend class NObjectIteratorImpl;
     friend std::ostream& operator<<(std::ostream& out, const ListObject& lop);
 
     ListObjectImpl *impl;
@@ -90,7 +90,6 @@ namespace librados
   public:
     static const NObjectIterator __EndObjectIterator;
     NObjectIterator() {}
-    NObjectIterator(ObjListCtx *ctx_);
     ~NObjectIterator();
     NObjectIterator(const NObjectIterator &rhs);
     NObjectIterator& operator=(const NObjectIterator& rhs);
@@ -102,7 +101,7 @@ namespace librados
     NObjectIterator &operator++(); // Preincrement
     NObjectIterator operator++(int); // Postincrement
     friend class IoCtx;
-    friend class ObjectIterator;
+    friend class NObjectIteratorImpl;
 
     /// get current hash position of the iterator, rounded to the current pg
     uint32_t get_pg_hash_position() const;
@@ -111,9 +110,9 @@ namespace librados
     uint32_t seek(uint32_t pos);
 
   private:
+    NObjectIterator(ObjListCtx *ctx_);
     void get_next();
-    ceph::shared_ptr < ObjListCtx > ctx;
-    ListObject cur_obj;
+    NObjectIteratorImpl *impl;
   };
 
   // DEPRECATED; Use NObjectIterator

@@ -508,23 +508,23 @@ struct librados::ObjListCtx {
   }
 };
 
-///////////////////////////// NObjectIterator /////////////////////////////
-librados::NObjectIterator::NObjectIterator(ObjListCtx *ctx_)
+///////////////////////////// NObjectIteratorImpl /////////////////////////////
+librados::NObjectIteratorImpl::NObjectIteratorImpl(ObjListCtx *ctx_)
   : ctx(ctx_)
 {
 }
 
-librados::NObjectIterator::~NObjectIterator()
+librados::NObjectIteratorImpl::~NObjectIteratorImpl()
 {
   ctx.reset();
 }
 
-librados::NObjectIterator::NObjectIterator(const NObjectIterator &rhs)
+librados::NObjectIteratorImpl::NObjectIteratorImpl(const NObjectIteratorImpl &rhs)
 {
   *this = rhs;
 }
 
-librados::NObjectIterator& librados::NObjectIterator::operator=(const librados::NObjectIterator &rhs)
+librados::NObjectIteratorImpl& librados::NObjectIteratorImpl::operator=(const librados::NObjectIteratorImpl &rhs)
 {
   if (&rhs == this)
     return *this;
@@ -544,7 +544,7 @@ librados::NObjectIterator& librados::NObjectIterator::operator=(const librados::
   return *this;
 }
 
-bool librados::NObjectIterator::operator==(const librados::NObjectIterator& rhs) const {
+bool librados::NObjectIteratorImpl::operator==(const librados::NObjectIteratorImpl& rhs) const {
 
   if (ctx.get() == NULL) {
     if (rhs.ctx.get() == NULL)
@@ -566,39 +566,39 @@ bool librados::NObjectIterator::operator==(const librados::NObjectIterator& rhs)
   return ctx.get() == rhs.ctx.get();
 }
 
-bool librados::NObjectIterator::operator!=(const librados::NObjectIterator& rhs) const {
+bool librados::NObjectIteratorImpl::operator!=(const librados::NObjectIteratorImpl& rhs) const {
   return !(*this == rhs);
 }
 
-const librados::ListObject& librados::NObjectIterator::operator*() const {
+const librados::ListObject& librados::NObjectIteratorImpl::operator*() const {
   return cur_obj;
 }
 
-const librados::ListObject* librados::NObjectIterator::operator->() const {
+const librados::ListObject* librados::NObjectIteratorImpl::operator->() const {
   return &cur_obj;
 }
 
-librados::NObjectIterator& librados::NObjectIterator::operator++()
+librados::NObjectIteratorImpl& librados::NObjectIteratorImpl::operator++()
 {
   get_next();
   return *this;
 }
 
-librados::NObjectIterator librados::NObjectIterator::operator++(int)
+librados::NObjectIteratorImpl librados::NObjectIteratorImpl::operator++(int)
 {
-  librados::NObjectIterator ret(*this);
+  librados::NObjectIteratorImpl ret(*this);
   get_next();
   return ret;
 }
 
-uint32_t librados::NObjectIterator::seek(uint32_t pos)
+uint32_t librados::NObjectIteratorImpl::seek(uint32_t pos)
 {
   uint32_t r = rados_nobjects_list_seek(ctx.get(), pos);
   get_next();
   return r;
 }
 
-void librados::NObjectIterator::get_next()
+void librados::NObjectIteratorImpl::get_next()
 {
   const char *entry, *key, *nspace;
   if (ctx->new_request) {
@@ -625,12 +625,86 @@ void librados::NObjectIterator::get_next()
   cur_obj.impl->locator = key ? key : string();
 }
 
-uint32_t librados::NObjectIterator::get_pg_hash_position() const
+uint32_t librados::NObjectIteratorImpl::get_pg_hash_position() const
 {
   if (ctx->new_request)
     return ctx->nlc->get_pg_hash_position();
   else
     return ctx->lc->get_pg_hash_position();
+}
+
+///////////////////////////// NObjectIterator /////////////////////////////
+librados::NObjectIterator::NObjectIterator(ObjListCtx *ctx_)
+{
+  impl = new NObjectIteratorImpl(ctx_);
+}
+
+librados::NObjectIterator::~NObjectIterator()
+{
+  delete impl;
+}
+
+librados::NObjectIterator::NObjectIterator(const NObjectIterator &rhs)
+{
+  if (rhs.impl == NULL) {
+    impl = NULL;
+    return;
+  }
+  impl = new NObjectIteratorImpl();
+  *impl = *(rhs.impl);
+}
+
+librados::NObjectIterator& librados::NObjectIterator::operator=(const librados::NObjectIterator &rhs)
+{
+  if (impl == NULL)
+    impl = new NObjectIteratorImpl();
+  *impl = *(rhs.impl);
+  return *this;
+}
+
+bool librados::NObjectIterator::operator==(const librados::NObjectIterator& rhs) const 
+{
+  return *impl == *(rhs.impl);
+}
+
+bool librados::NObjectIterator::operator!=(const librados::NObjectIterator& rhs) const {
+  return !(*impl == *(rhs.impl));
+}
+
+const librados::ListObject& librados::NObjectIterator::operator*() const {
+  return *(impl->get_listobjectp());
+}
+
+const librados::ListObject* librados::NObjectIterator::operator->() const {
+  return impl->get_listobjectp();
+}
+
+librados::NObjectIterator& librados::NObjectIterator::operator++()
+{
+  impl->get_next();
+  return *this;
+}
+
+librados::NObjectIterator librados::NObjectIterator::operator++(int)
+{
+  librados::NObjectIterator ret(*this);
+  impl->get_next();
+  return ret;
+}
+
+uint32_t librados::NObjectIterator::seek(uint32_t pos)
+{
+  return impl->seek(pos);
+}
+
+void librados::NObjectIterator::get_next()
+{
+  impl->get_next();
+}
+
+uint32_t librados::NObjectIterator::get_pg_hash_position() const
+{
+  return impl->get_pg_hash_position();
 }
 
 const librados::NObjectIterator librados::NObjectIterator::__EndObjectIterator(NULL);
