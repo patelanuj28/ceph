@@ -16,6 +16,8 @@
 #ifndef CEPH_LIBRADOS_LISTOBJECTIMPL_H
 #define CEPH_LIBRADOS_LISTOBJECTIMPL_H
 
+#include <include/rados/librados.hpp>
+
 namespace librados {
 struct ListObjectImpl {
   std::string nspace;
@@ -37,5 +39,40 @@ inline std::ostream& operator<<(std::ostream& out, const struct ListObjectImpl& 
       << (lop.locator.size() ? "@" + lop.locator : "");
   return out;
 }
+
+class ObjListCtx;
+
+struct NObjectIteratorImpl {
+  public:
+    NObjectIteratorImpl() {}
+    ~NObjectIteratorImpl();
+    NObjectIteratorImpl(const NObjectIteratorImpl &rhs);
+    NObjectIteratorImpl& operator=(const NObjectIteratorImpl& rhs);
+
+    bool operator==(const NObjectIteratorImpl& rhs) const;
+    bool operator!=(const NObjectIteratorImpl& rhs) const;
+    const ListObject& operator*() const;
+    const ListObject* operator->() const;
+    NObjectIteratorImpl &operator++(); // Preincrement
+    NObjectIteratorImpl operator++(int); // Postincrement
+    const ListObject *get_listobjectp() { return &cur_obj; }
+    friend class IoCtx;
+    friend class ListObjectImpl;
+    //friend class ListObject;
+    friend class NObjectIterator;
+
+    /// get current hash position of the iterator, rounded to the current pg
+    uint32_t get_pg_hash_position() const;
+
+    /// move the iterator to a given hash position.  this may (will!) be rounded to the nearest pg.
+    uint32_t seek(uint32_t pos);
+
+  private:
+    NObjectIteratorImpl(ObjListCtx *ctx_);
+    void get_next();
+    ceph::shared_ptr < ObjListCtx > ctx;
+    ListObject cur_obj;
+};
+
 }
 #endif
