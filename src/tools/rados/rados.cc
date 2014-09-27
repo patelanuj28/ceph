@@ -1143,6 +1143,7 @@ static int do_cache_evict(IoCtx& io_ctx, string oid)
 static int do_cache_flush_evict_all(IoCtx& io_ctx, bool blocking)
 {
   int errors = 0;
+  io_ctx.set_namespace(all_nspaces);
   try {
     librados::NObjectIterator i = io_ctx.nobjects_begin();
     librados::NObjectIterator i_end = io_ctx.nobjects_end();
