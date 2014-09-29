@@ -1746,10 +1746,6 @@ void ReplicatedPG::snap_trimmer()
     // replica collection trimming
     snap_trimmer_machine.process_event(SnapTrim());
   }
-  if (snap_trimmer_machine.requeue) {
-    dout(10) << "snap_trimmer requeue" << dendl;
-    queue_snap_trim();
-  }
   unlock();
   return;
 }
@@ -7848,13 +7844,11 @@ void ReplicatedPG::SnapTrimmer::log_exit(const char *state_name, utime_t enter_t
 ReplicatedPG::NotTrimming::NotTrimming(my_context ctx) : my_base(ctx)
 {
   state_name = "NotTrimming";
-  context< SnapTrimmer >().requeue = false;
   context< SnapTrimmer >().log_enter(state_name);
 }
 
 void ReplicatedPG::NotTrimming::exit()
 {
-  context< SnapTrimmer >().requeue = true;
   context< SnapTrimmer >().log_exit(state_name, enter_time);
 }
 
@@ -7955,7 +7949,6 @@ ReplicatedPG::WaitingOnReplicas::WaitingOnReplicas(my_context ctx) : my_base(ctx
 {
   state_name = "Trimming/WaitingOnReplicas";
   context< SnapTrimmer >().log_enter(state_name);
-  context< SnapTrimmer >().requeue = false;
 }
 
 void ReplicatedPG::WaitingOnReplicas::exit()
