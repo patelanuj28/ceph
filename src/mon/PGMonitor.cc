@@ -707,8 +707,18 @@ bool PGMonitor::preprocess_pg_stats(MPGStats *stats)
 
   // First, just see if they need a new osdmap. But
   // only if they've had the map for a while.
+  /*
+   * We don't need the osdmon to be readable at this stage, given we only
+   * care if stats->epoch is lower than the current (in-memory) osdmap
+   * epoch.  And given that (currently) there's no risk of the in-mem osdmap
+   * being updated *before* we finish processing this message, even if there's
+   * an update currently going on, we will still send out what we know to be
+   * the latest available state (on-going updates are not committed thus not
+   * considered part of the available state; even if already committed, not
+   * having been read from persistent storage into memory makes it perfectly
+   * okay to ignore them.
+   */
   if (stats->had_map_for > 30.0 && 
-      mon->osdmon()->is_readable() &&
       stats->epoch < mon->osdmon()->osdmap.get_epoch())
     mon->osdmon()->send_latest_now_nodelete(stats, stats->epoch+1);
 
