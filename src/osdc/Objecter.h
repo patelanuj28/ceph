@@ -1268,11 +1268,24 @@ public:
 
     bufferlist extra_info;
 
+    // The budget associated with this context, once it is set (>= 0),
+    // the budget is not get/released on OP basis, instead the budget
+    // is acquired before sending the first OP and released upon receiving
+    // the last op reply.
+    int ctx_budget;
+
     NListContext() : current_pg(0), current_pg_epoch(0), starting_pg_num(0),
 		    at_end_of_pool(false),
 		    at_end_of_pg(false),
 		    pool_id(0),
-		    pool_snap_seq(0), max_entries(0) {}
+		    pool_snap_seq(0),
+                    max_entries(0),
+                    nspace(),
+                    bl(),
+                    list(),
+                    filter(),
+                    extra_info(),
+                    ctx_budget(-1) {}
 
     bool at_end() const {
       return at_end_of_pool;
@@ -1670,6 +1683,7 @@ public:
     put_op_budget_bytes(op_budget);
   }
   void put_list_context_budget(ListContext *list_context);
+  void put_nlist_context_budget(NListContext *list_context);
   Throttle op_throttle_bytes, op_throttle_ops;
 
  public:
