@@ -1304,6 +1304,26 @@ TRACEPOINT_EVENT(librbd, get_old_format_exit,
     )
 )
 
+TRACEPOINT_EVENT(librbd, is_exclusive_leader_enter,
+    TP_ARGS(
+        void*, imagectx),
+    TP_FIELDS(
+      ctf_integer_hex(void*, imagectx, imagectx)
+    )
+)
+
+TRACEPOINT_EVENT(librbd, is_exclusive_leader_exit,
+    TP_ARGS(
+        void*, imagectx,
+        int, retval,
+        char, is_leader),
+    TP_FIELDS(
+      ctf_integer_hex(void*, imagectx, imagectx)
+      ctf_integer(int, retval, retval)
+      ctf_integer(char, is_leader, is_leader)
+    )
+)
+
 TRACEPOINT_EVENT(librbd, stat_enter,
     TP_ARGS(
         void*, imagectx,

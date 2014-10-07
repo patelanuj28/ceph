@@ -117,6 +117,8 @@ public:
   int size(uint64_t *size);
   int features(uint64_t *features);
   int overlap(uint64_t *overlap);
+  int is_exclusive_leader(bool *is_leader);
+
   int copy(IoCtx& dest_io_ctx, const char *destname);
   int copy2(Image& dest);
   int copy_with_progress(IoCtx& dest_io_ctx, const char *destname,
