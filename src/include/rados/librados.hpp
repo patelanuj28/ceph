@@ -89,7 +89,7 @@ namespace librados
   class NObjectIterator : public std::iterator <std::forward_iterator_tag, ListObject> {
   public:
     static const NObjectIterator __EndObjectIterator;
-    NObjectIterator() {}
+    NObjectIterator(): impl(NULL) {}
     ~NObjectIterator();
     NObjectIterator(const NObjectIterator &rhs);
     NObjectIterator& operator=(const NObjectIterator& rhs);
