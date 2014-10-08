@@ -4528,17 +4528,17 @@ librados::ListObject::~ListObject()
   impl = NULL;
 }
 
-std::string librados::ListObject::get_nspace() const
+const std::string& librados::ListObject::get_nspace() const
 {
   return impl->get_nspace();
 }
 
-std::string librados::ListObject::get_oid() const
+const std::string& librados::ListObject::get_oid() const
 {
   return impl->get_oid();
 }
 
-std::string librados::ListObject::get_locator() const
+const std::string& librados::ListObject::get_locator() const
 {
   return impl->get_locator();
 }

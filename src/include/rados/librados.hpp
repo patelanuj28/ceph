@@ -68,9 +68,9 @@ namespace librados
   class ListObject
   {
   public:
-    std::string get_nspace() const;
-    std::string get_oid() const;
-    std::string get_locator() const;
+    const std::string& get_nspace() const;
+    const std::string& get_oid() const;
+    const std::string& get_locator() const;
 
     ListObject();
     ~ListObject();
