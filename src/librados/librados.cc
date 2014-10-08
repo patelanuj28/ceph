@@ -3430,9 +3430,9 @@ extern "C" int rados_watch2(rados_ioctx_t io, const char *o, uint64_t *handle,
   librados::IoCtxImpl *ctx = (librados::IoCtxImpl *)io;
   object_t oid(o);
   C_WatchCB2 *wc = new C_WatchCB2(watchcb, arg);
-  int ret = ctx->watch(oid, cookie, NULL, wc);
+  int retval = ctx->watch(oid, cookie, NULL, wc);
   tracepoint(librados, rados_watch_exit, retval, *handle);
-  return ret;
+  return retval;
 }
 
 extern "C" int rados_unwatch(rados_ioctx_t io, const char *o, uint64_t handle)
