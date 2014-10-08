@@ -61,6 +61,7 @@
  */
 #define RBD_CHILDREN		"rbd_children"
 #define RBD_LOCK_NAME		"rbd_lock"
+#define RBD_EXCLUSIVE_LOCK_NAME	"rbd_exclusive_lock"
 
 #define RBD_DEFAULT_OBJ_ORDER	22   /* 4MB */
 
