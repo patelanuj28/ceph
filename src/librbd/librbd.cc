@@ -362,9 +362,8 @@ namespace librbd {
   {
     ImageCtx *ictx = (ImageCtx *)ctx;
     tracepoint(librbd, is_exclusive_leader_enter, ictx);
-    // TODO: implement
-    int r = 0;
     *is_leader = false;
+    int r = librbd::is_exclusive_leader(ictx, is_leader);
     tracepoint(librbd, is_exclusive_leader_exit, ictx, r, *is_leader);
     return r;
   }
@@ -1123,10 +1122,10 @@ extern "C" int rbd_is_exclusive_leader(rbd_image_t image, int *is_leader)
 {
   librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
   tracepoint(librbd, is_exclusive_leader_enter, ictx);
-  // TODO implement
-  int r = 0;
-  *is_leader = 0;
-  tracepoint(librbd, is_exclusive_leader_exit, ictx, r, *is_leader);
+  bool leader;
+  int r = librbd::is_exclusive_leader(ictx, &leader);
+  *is_leader = leader ? 1 : 0;
+  tracepoint(librbd, is_exclusive_leader_exit, ictx, r, leader);
   return r;
 }
 

@@ -868,5 +868,81 @@ class TestExclusiveLock(object):
     def test_leadership(self):
         with nested(Image(ioctx, IMG_NAME), Image(ioctx2, IMG_NAME)) as (
                 image1, image2):
-            eq(image1.is_exclusive_leader(), False)
+            eq(image1.is_exclusive_leader(), True)
             eq(image2.is_exclusive_leader(), False)
+
+    def test_snapshot_leadership(self):
+        try:
+            with Image(ioctx, IMG_NAME) as image:
+                eq(image.is_exclusive_leader(), True)
+                image.create_snap('snap')
+                eq(image.is_exclusive_leader(), True)
+                image.set_snap('snap')
+                eq(image.is_exclusive_leader(), False)
+                image.set_snap(None)
+                eq(image.is_exclusive_leader(), True)
+            with Image(ioctx, IMG_NAME, snapshot='snap') as image:
+                eq(image.is_exclusive_leader(), False)
+        finally:
+            with Image(ioctx, IMG_NAME) as image:
+                image.remove_snap('snap')
+
+    def test_read_only_leadership(self):
+        with Image(ioctx, IMG_NAME, read_only=True) as image:
+            eq(image.is_exclusive_leader(), False)
+
+    def test_follower_flatten(self):
+        with Image(ioctx, IMG_NAME) as image:
+            image.create_snap('snap')
+            image.protect_snap('snap')
+        try:
+            RBD().clone(ioctx, IMG_NAME, 'snap', ioctx, 'clone', features)
+            with nested(Image(ioctx, 'clone'), Image(ioctx2, 'clone')) as (
+                    image1, image2):
+                assert_raises(ReadOnlyImage, image2.flatten)
+                image1.flatten()
+        finally:
+            RBD().remove(ioctx, 'clone')
+            with Image(ioctx, IMG_NAME) as image:
+                image.unprotect_snap('snap')
+                image.remove_snap('snap')
+
+    def test_follower_resize(self):
+        with nested(Image(ioctx, IMG_NAME), Image(ioctx2, IMG_NAME)) as (
+                image1, image2):
+            for new_size in [IMG_SIZE * 2, IMG_SIZE / 2]:
+                assert_raises(ReadOnlyImage, image2.resize, new_size)
+                image1.resize(new_size);
+
+    def test_follower_snap_rollback(self):
+        with nested(Image(ioctx, IMG_NAME), Image(ioctx2, IMG_NAME)) as (
+                image1, image2):
+            image1.create_snap('snap')
+            try:
+                assert_raises(ReadOnlyImage, image2.rollback_to_snap, 'snap')
+                image1.rollback_to_snap('snap')
+            finally:
+                image1.remove_snap('snap')
+
+    def test_follower_discard(self):
+        with nested(Image(ioctx, IMG_NAME), Image(ioctx2, IMG_NAME)) as (
+                image1, image2):
+            data = rand_data(256)
+            image1.write(data, 0)
+            image2.discard(0, 256)
+            eq(image1.is_exclusive_leader(), False)
+            eq(image2.is_exclusive_leader(), True)
+            read = image2.read(0, 256)
+            eq(256*'\0', read)
+
+    def test_follower_write(self):
+        with nested(Image(ioctx, IMG_NAME), Image(ioctx2, IMG_NAME)) as (
+                image1, image2):
+            data = rand_data(256)
+            image1.write(data, 0)
+            image2.write(data, IMG_SIZE / 2)
+            eq(image1.is_exclusive_leader(), False)
+            eq(image2.is_exclusive_leader(), True)
+            for offset in [0, IMG_SIZE / 2]:
+                read = image2.read(0, 256)
+                eq(data, read)
