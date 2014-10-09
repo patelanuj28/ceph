@@ -98,6 +98,8 @@ namespace librbd {
     void release_lock();
     void finalize_request_lock();
 
+    void finalize_header_update();
+
     void cancel_aio_requests(int result);
     void cancel_async_requests(int result);
 

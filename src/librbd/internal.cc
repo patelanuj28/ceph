@@ -440,7 +440,7 @@ namespace librbd {
     ictx->leader_lock.get_read();
   }
 
-  int snap_create(ImageCtx *ictx, const char *snap_name)
+  int snap_create(ImageCtx *ictx, const char *snap_name, bool notify)
   {
     ldout(ictx->cct, 20) << "snap_create " << ictx << " " << snap_name << dendl;
 
@@ -456,7 +456,7 @@ namespace librbd {
         (!ictx->image_watcher->is_leader())) {
       try_lock_image(ictx);
       if (!ictx->image_watcher->is_leader()) {
-        return -EROFS;
+        return ictx->image_watcher->notify_snap_create(snap_name);
       }
     }
 
@@ -468,7 +468,9 @@ namespace librbd {
     if (r < 0)
       return r;
 
-    notify_change(ictx->md_ctx, ictx->header_oid, ictx);
+    if (notify) {
+      notify_change(ictx->md_ctx, ictx->header_oid, ictx);
+    }
 
     ictx->perfcounter->inc(l_librbd_snap_create);
     return 0;
@@ -1488,12 +1490,24 @@ reprotect_and_return_err:
     ldout(cct, 20) << "resize " << ictx << " " << ictx->size << " -> "
 		   << size << dendl;
 
+    {
+      RWLock::RLocker l(ictx->leader_lock);
+      if (ictx->image_watcher != NULL &&
+	  ictx->image_watcher->lock_supported() &&
+	  !ictx->image_watcher->is_leader()) {
+	try_lock_image(ictx);
+	if (!ictx->image_watcher->is_leader()) {
+	  return ictx->image_watcher->notify_resize(size, prog_ctx);
+	}
+      }
+    }
+
     Mutex my_lock("librbd::resize::my_lock");
     Cond cond;
     bool done;
     int ret;
-
     Context *ctx = new C_SafeCond(&my_lock, &cond, &done, &ret);
+
     ret = async_resize(ictx, ctx, size, prog_ctx);
     if (ret < 0) {
       delete ctx;
@@ -1548,8 +1562,7 @@ reprotect_and_return_err:
     uint64_t original_size;
     {
       RWLock::RLocker l(ictx->leader_lock);
-      if (ictx->image_watcher != NULL &&
-	  ictx->image_watcher->lock_supported() &&
+      if (ictx->image_watcher->lock_supported() &&
 	  !ictx->image_watcher->is_leader()) {
 	try_lock_image(ictx);
 	if (!ictx->image_watcher->is_leader()) {
@@ -2601,12 +2614,24 @@ reprotect_and_return_err:
     CephContext *cct = ictx->cct;
     ldout(cct, 20) << "flatten" << dendl;
 
+    {
+      RWLock::RLocker l(ictx->leader_lock);
+      if (ictx->image_watcher != NULL &&
+	  ictx->image_watcher->lock_supported() &&
+          !ictx->image_watcher->is_leader()) {
+        try_lock_image(ictx);
+        if (!ictx->image_watcher->is_leader()) {
+          return ictx->image_watcher->notify_flatten(prog_ctx);
+        }
+      }
+    }
+
     Mutex my_lock("librbd::flatten:my_lock");
     Cond cond;
     bool done;
     int ret;
-
     Context *ctx = new C_SafeCond(&my_lock, &cond, &done, &ret);
+
     ret = async_flatten(ictx, ctx, prog_ctx);
     if (ret < 0) {
       delete ctx;
