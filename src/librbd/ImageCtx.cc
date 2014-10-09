@@ -46,13 +46,15 @@ namespace librbd {
       snap_lock("librbd::ImageCtx::snap_lock"),
       parent_lock("librbd::ImageCtx::parent_lock"),
       refresh_lock("librbd::ImageCtx::refresh_lock"),
+      object_map_lock("librbd::ImageCtx::object_map_lock"),
       extra_read_flags(0),
       old_format(true),
       order(0), size(0), features(0),
       format_string(NULL),
       id(image_id), parent(NULL),
       stripe_unit(0), stripe_count(0),
-      object_cacher(NULL), writeback_handler(NULL), object_set(NULL)
+      object_cacher(NULL), writeback_handler(NULL), object_set(NULL),
+      object_map_enabled(false)
   {
     md_ctx.dup(p);
     data_ctx.dup(p);
@@ -645,5 +647,107 @@ namespace librbd {
 		   << ", object overlap " << len
 		   << " from image extents " << objectx << dendl;
     return len;
- }
+  }
+
+  int ImageCtx::refresh_object_map()
+  {
+    if ((features & RBD_FEATURE_EXCLUSIVE_LOCK) == 0) {
+      return 0;
+    }
+
+    int r = cls_client::object_map_load(&data_ctx, object_map_name(id),
+					&object_map);
+    if (r < 0) {
+      lderr(cct) << "error refreshing object map: " << cpp_strerror(r)
+		 << dendl;
+      object_map_enabled = false;
+      object_map.clear();
+      return 0;
+    }
+    object_map_enabled = true;
+
+    ldout(cct, 20) << "refreshed object map: " << object_map.size()
+                   << dendl;
+
+    uint64_t period = get_stripe_period();
+    uint64_t num_periods = (get_image_size(snap_id) + period - 1) / period;
+    if (object_map.size() != num_periods * get_stripe_count()) {
+      // resize op might have been interrupted
+      lderr(cct) << "incorrect object map size: " << object_map.size()
+		 << " != " << num_periods * get_stripe_count() << dendl;
+      return resize_object_map(OBJECT_NONEXISTENT);
+    }
+    return 0;
+  }
+
+  int ImageCtx::resize_object_map(uint8_t default_object_state)
+  {
+    if ((features & RBD_FEATURE_EXCLUSIVE_LOCK) == 0 || !object_map_enabled) {
+      return 0;
+    }
+
+    ldout(cct, 20) << "resizing object map: " << get_num_objects() << dendl;
+    int r = cls_client::object_map_resize(&data_ctx, object_map_name(id),
+					  get_num_objects(),
+					  default_object_state);
+    if (r == 0) {
+      size_t orig_object_map_size = object_map.size();
+      object_map.resize(get_num_objects());
+      for (uint64_t i = orig_object_map_size; i < object_map.size(); ++i) {
+        object_map[i] = default_object_state;
+      }
+    }
+    return r;
+  }
+
+  int ImageCtx::update_object_map(uint64_t object_no, uint8_t object_state)
+  {
+    return update_object_map(object_no, object_no + 1, object_state, false, 0);
+  }
+
+  int ImageCtx::update_object_map(uint64_t start_object_no,
+				  uint64_t end_object_no,
+				  uint8_t new_object_state,
+				  bool filter, uint8_t current_object_state)
+  {
+    if ((features & RBD_FEATURE_EXCLUSIVE_LOCK) == 0 || !object_map_enabled) {
+      return 0;
+    }
+
+    assert(start_object_no <= end_object_no &&
+	   end_object_no <= object_map.size());
+
+    bool update_required = false;
+    for (uint64_t object_no = start_object_no; object_no < end_object_no;
+	 ++object_no) {
+      if ((!filter || object_map[object_no] == current_object_state) &&
+      object_map[object_no] != new_object_state) {
+	update_required = true;
+	break;
+      }
+    }
+
+    if (!update_required) {
+      return 0;
+    }
+
+    ldout(cct, 20) << "updating object map: [" << start_object_no << ","
+		   << end_object_no << ") = "
+		   << static_cast<uint32_t>(new_object_state) << dendl;
+
+    int r = cls_client::object_map_update(&data_ctx, object_map_name(id),
+					  start_object_no, end_object_no,
+					  new_object_state, filter,
+					  current_object_state);
+    if (r == 0) {
+      for (uint64_t object_no = start_object_no; object_no < end_object_no;
+           ++object_no) {
+	if (!filter || object_map[object_no] == current_object_state) {
+	  object_map[object_no] = new_object_state;
+        }
+      }
+    }
+    return 0;
+  }
+
 }
