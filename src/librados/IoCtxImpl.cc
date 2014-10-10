@@ -1034,7 +1034,7 @@ int librados::IoCtxImpl::watch(const object_t& oid,
   bufferlist bl;
   wc->linger_id = objecter->linger_mutate(oid, oloc, wr,
 					  snapc, ceph_clock_now(NULL), bl,
-					  0,
+					  *cookie, 0,
 					  NULL, onfinish, &objver);
   lock->Unlock();
 

@@ -100,6 +100,7 @@ enum {
   l_osdc_linger_active,
   l_osdc_linger_send,
   l_osdc_linger_resend,
+  l_osdc_linger_ping,
 
   l_osdc_poolop_active,
   l_osdc_poolop_send,
@@ -223,6 +224,7 @@ void Objecter::init()
     pcb.add_u64(l_osdc_linger_active, "linger_active");
     pcb.add_u64_counter(l_osdc_linger_send, "linger_send");
     pcb.add_u64_counter(l_osdc_linger_resend, "linger_resend");
+    pcb.add_u64_counter(l_osdc_linger_ping, "linger_ping");
 
     pcb.add_u64(l_osdc_poolop_active, "poolop_active");
     pcb.add_u64_counter(l_osdc_poolop_send, "poolop_send");
@@ -456,6 +458,41 @@ void Objecter::_linger_commit(LingerOp *info, int r)
   info->pobjver = NULL;
 }
 
+void Objecter::_send_linger_ping(LingerOp *info)
+{
+  assert(rwlock.is_locked());
+  utime_t now = ceph_clock_now(NULL);
+  ldout(cct, 10) << __func__ << " " << info->linger_id << " now " << now << dendl;
+
+  RWLock::Context lc(rwlock, RWLock::Context::TakenForRead);
+
+  vector<OSDOp> opv(1);
+  opv[0].op.op = CEPH_OSD_OP_WATCH;
+  opv[0].op.watch.cookie = info->cookie;
+  opv[0].op.watch.op = CEPH_OSD_WATCH_OP_PING;
+  C_Linger_Ping *onack = new C_Linger_Ping(this, info);
+  Op *o = new Op(info->target.base_oid, info->target.base_oloc,
+		 opv, info->target.flags | CEPH_OSD_FLAG_READ,
+		 onack, NULL, NULL);
+  info->ping_tid = _op_submit(o, lc);
+  onack->sent = now;
+  logger->inc(l_osdc_linger_ping);
+}
+
+void Objecter::_linger_ping(LingerOp *info, int r, utime_t sent) 
+{
+  ldout(cct, 10) << __func__ << " " << info->linger_id
+		 << " sent " << sent << " = " << r << dendl;
+  info->watch_lock.Lock();
+  if (r == 0) {
+    info->watch_valid_thru = sent;
+  } else if (r < 0) {
+    info->last_ping_error = r;
+  }
+  info->watch_cond.SignalAll();
+  info->watch_lock.Unlock();
+}
+
 void Objecter::unregister_linger(uint64_t linger_id)
 {
   RWLock::WLocker wl(rwlock);
@@ -484,11 +521,11 @@ void Objecter::_unregister_linger(uint64_t linger_id)
 }
 
 ceph_tid_t Objecter::linger_mutate(const object_t& oid, const object_locator_t& oloc,
-			      ObjectOperation& op,
-			      const SnapContext& snapc, utime_t mtime,
-			      bufferlist& inbl, int flags,
-			      Context *onack, Context *oncommit,
-			      version_t *objver)
+				   ObjectOperation& op,
+				   const SnapContext& snapc, utime_t mtime,
+				   bufferlist& inbl, uint64_t cookie, int flags,
+				   Context *onack, Context *oncommit,
+				   version_t *objver)
 {
   LingerOp *info = new LingerOp;
   info->target.base_oid = oid;
@@ -499,6 +536,7 @@ ceph_tid_t Objecter::linger_mutate(const object_t& oid, const object_locator_t& 
   info->mtime = mtime;
   info->target.flags = flags | CEPH_OSD_FLAG_WRITE;
   info->ops = op.ops;
+  info->cookie = cookie;
   info->inbl = inbl;
   info->poutbl = NULL;
   info->pobjver = objver;
@@ -1576,6 +1614,7 @@ void Objecter::tick()
         assert(op->session);
         ldout(cct, 10) << " pinging osd that serves lingering tid " << p->first << " (osd." << op->session->osd << ")" << dendl;
         toping.insert(op->session);
+	_send_linger_ping(op);
       }
       for (map<uint64_t,CommandOp*>::iterator p = s->command_ops.begin();
            p != s->command_ops.end();

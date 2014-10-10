@@ -1388,24 +1388,36 @@ public:
     bufferlist *poutbl;
     version_t *pobjver;
 
+    uint64_t cookie;   ///< non-zero if this is a watch
+    utime_t watch_valid_thru; ///< send time for last acked ping
+    int last_ping_error;  ///< error from last failed ping, if any
+    Mutex watch_lock;
+    Cond watch_cond;
+
     bool registered;
     bool canceled;
     Context *on_reg_ack, *on_reg_commit;
 
+
     OSDSession *session;
 
     ceph_tid_t register_tid;
+    ceph_tid_t ping_tid;
     epoch_t map_dne_bound;
 
     LingerOp() : linger_id(0),
 		 target(object_t(), object_locator_t(), 0),
 		 snap(CEPH_NOSNAP),
 		 poutbl(NULL), pobjver(NULL),
+		 cookie(0),
+		 last_ping_error(0),
+		 watch_lock("Objecter::LingerOp::watch_lock"),
 		 registered(false),
 		 canceled(false),
 		 on_reg_ack(NULL), on_reg_commit(NULL),
 		 session(NULL),
 		 register_tid(0),
+		 ping_tid(0),
 		 map_dne_bound(0) {}
 
     // no copy!
@@ -1440,6 +1452,21 @@ public:
     }
     void finish(int r) {
       objecter->_linger_commit(info, r);
+    }
+  };
+
+  struct C_Linger_Ping : public Context {
+    Objecter *objecter;
+    LingerOp *info;
+    utime_t sent;
+    C_Linger_Ping(Objecter *o, LingerOp *l) : objecter(o), info(l) {
+      info->get();
+    }
+    ~C_Linger_Ping() {
+      info->put();
+    }
+    void finish(int r) {
+      objecter->_linger_ping(info, r, sent);
     }
   };
 
@@ -1550,6 +1577,8 @@ public:
   void _send_linger(LingerOp *info);
   void _linger_ack(LingerOp *info, int r);
   void _linger_commit(LingerOp *info, int r);
+  void _send_linger_ping(LingerOp *info);
+  void _linger_ping(LingerOp *info, int r, utime_t sent);
 
   void _check_op_pool_dne(Op *op, bool session_locked);
   void _send_op_map_check(Op *op);
@@ -1846,11 +1875,11 @@ public:
     return op_submit(o, ctx_budget);
   }
   ceph_tid_t linger_mutate(const object_t& oid, const object_locator_t& oloc,
-		      ObjectOperation& op,
-		      const SnapContext& snapc, utime_t mtime,
-		      bufferlist& inbl, int flags,
-		      Context *onack, Context *onfinish,
-		      version_t *objver);
+			   ObjectOperation& op,
+			   const SnapContext& snapc, utime_t mtime,
+			   bufferlist& inbl, uint64_t cookie, int flags,
+			   Context *onack, Context *onfinish,
+			   version_t *objver);
   ceph_tid_t linger_read(const object_t& oid, const object_locator_t& oloc,
 		    ObjectOperation& op,
 		    snapid_t snap, bufferlist& inbl, bufferlist *poutbl, int flags,
