@@ -102,10 +102,12 @@ class MDSMonitor : public PaxosService {
   bool preprocess_command(MMonCommand *m);
   bool prepare_command(MMonCommand *m);
   bool management_command(
+      MMonCommand *m,
       std::string const &prefix,
       map<string, cmd_vartype> &cmdmap,
       std::stringstream &ss,
-      int &r);
+      int &r,
+      bool &retry);
   bool filesystem_command(
       MMonCommand *m,
       std::string const &prefix,
