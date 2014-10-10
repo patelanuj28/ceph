@@ -447,6 +447,8 @@ enum {
 enum {
 	CEPH_OSD_WATCH_OP_UNWATCH = 0,
 	CEPH_OSD_WATCH_OP_WATCH = 1,
+	/* unused */
+	CEPH_OSD_WATCH_OP_WATCH_RECONNECT = 3,
 };
 
 const char *ceph_osd_watch_op_name(int o);

@@ -49,6 +49,8 @@ const char *ceph_osd_watch_op_name(int o)
 		return "unwatch";
 	case CEPH_OSD_WATCH_OP_WATCH:
 		return "watch";
+	case CEPH_OSD_WATCH_OP_WATCH_RECONNECT:
+		return "watch-reconnect";
 	default:
 		return "???";
 	}
