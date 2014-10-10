@@ -927,7 +927,8 @@ bool MDSMonitor::prepare_command(MMonCommand *m)
   }
 
   /* Execute filesystem add/remove, or pass through to filesystem_command */
-  bool const handled = management_command(prefix, cmdmap, ss, r);
+  bool retry = false;
+  bool const handled = management_command(m, prefix, cmdmap, ss, r, retry);
   if (!handled) {
     if (!pending_mdsmap.get_enabled()) {
       ss << "No filesystem configured: use `ceph fs new` to create a filesystem";
@@ -939,6 +940,9 @@ bool MDSMonitor::prepare_command(MMonCommand *m)
         return false;
       }
     }
+  } else if (retry) {
+    // Message has been enqueued for retry; return.
+    return false;
   }
 
   /* Compose response */
@@ -1004,10 +1008,12 @@ int MDSMonitor::_check_pool(
  *         fall through and look for other types of command.
  */
 bool MDSMonitor::management_command(
+    MMonCommand *m,
     std::string const &prefix,
     map<string, cmd_vartype> &cmdmap,
     std::stringstream &ss,
-    int &r)
+    int &r,
+    bool &retry)
 {
   if (prefix == "mds newfs") {
     /* Legacy `newfs` command, takes pool numbers instead of
@@ -1117,6 +1123,15 @@ bool MDSMonitor::management_command(
     // Automatically set crash_replay_interval on data pool if it
     // isn't already set.
     if (data_pool->get_crash_replay_interval() == 0) {
+      // We will be changing osdmon's state and requesting the osdmon to
+      // propose.  We thus need to make sure the osdmon is writeable
+      // before we do this, waiting if it's not.
+      if (!mon->osdmon()->is_writeable()) {
+        mon->osdmon()->wait_for_writeable(new C_RetryMessage(this, m));
+        retry = true;
+        return true;
+      }
+
       r = mon->osdmon()->set_crash_replay_interval(data, g_conf->osd_default_data_pool_replay_window);
       assert(r == 0);  // We just did get_pg_pool so it must exist and be settable
       request_proposal(mon->osdmon());
