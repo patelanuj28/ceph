@@ -4,6 +4,7 @@
  * Ceph distributed storage system
  *
  * Copyright (C) 2013,2014 Cloudwatt <libre.licensing@cloudwatt.com>
+ * Copyright (C) 2014 Red Hat <contact@redhat.com>
  *
  * Author: Loic Dachary <loic@dachary.org>
  *
@@ -17,6 +18,7 @@
 #include <errno.h>
 #include "arch/probe.h"
 #include "arch/intel.h"
+#include "arch/neon.h"
 #include "global/global_init.h"
 #include "erasure-code/ErasureCodePlugin.h"
 #include "common/ceph_argparse.h"
@@ -65,6 +67,7 @@ TEST(ErasureCodePlugin, select)
   int arch_intel_ssse3  = ceph_arch_intel_ssse3;
   int arch_intel_sse3   = ceph_arch_intel_sse3;
   int arch_intel_sse2   = ceph_arch_intel_sse2;
+  int arch_neon         = ceph_arch_neon;
 
   ErasureCodePluginRegistry &instance = ErasureCodePluginRegistry::instance();
   map<std::string,std::string> parameters;
@@ -74,6 +77,7 @@ TEST(ErasureCodePlugin, select)
   parameters["directory"] = ".libs";
   parameters["technique"] = "reed_sol_van";
 
+#ifdef INTEL_SSE4_PCLMUL
   // all features are available, load the SSE4 plugin
   {
     ceph_arch_intel_pclmul = 1;
@@ -88,6 +92,9 @@ TEST(ErasureCodePlugin, select)
     EXPECT_EQ(sse4_side_effect, instance.factory("jerasure", parameters,
                                                  &erasure_code, cerr));
   }
+#endif // INTEL_SSE4_PCLMUL
+
+#ifdef INTEL_SSE3
   // pclmul is missing, load the SSE3 plugin
   {
     ceph_arch_intel_pclmul = 0;
@@ -102,7 +109,21 @@ TEST(ErasureCodePlugin, select)
     EXPECT_EQ(sse3_side_effect, instance.factory("jerasure", parameters,
                                                  &erasure_code, cerr));
   }
-  // pclmul and sse3 are missing, load the generic plugin
+#endif // INTEL_SSE3
+
+#ifdef ARM_NEON
+  // neon is available, load the neon plugin
+  {
+    ceph_arch_neon = 1;
+
+    ErasureCodeInterfaceRef erasure_code;
+    int neon_side_effect = -555;
+    EXPECT_EQ(neon_side_effect, instance.factory("jerasure", parameters,
+                                                 &erasure_code, cerr));
+  }
+#endif // ARM_NEON
+
+  // neon, pclmul and sse3 are missing, load the generic plugin
   {
     ceph_arch_intel_pclmul = 0;
     ceph_arch_intel_sse42  = 1;
@@ -110,13 +131,13 @@ TEST(ErasureCodePlugin, select)
     ceph_arch_intel_ssse3  = 1;
     ceph_arch_intel_sse3   = 0;
     ceph_arch_intel_sse2   = 1;
+    ceph_arch_neon	   = 0;
 
     ErasureCodeInterfaceRef erasure_code;
     int generic_side_effect = -111;
     EXPECT_EQ(generic_side_effect, instance.factory("jerasure", parameters,
                                                  &erasure_code, cerr));
   }
-
 
   // restore probe results
   ceph_arch_intel_pclmul = arch_intel_pclmul;
@@ -125,27 +146,34 @@ TEST(ErasureCodePlugin, select)
   ceph_arch_intel_ssse3  = arch_intel_ssse3;
   ceph_arch_intel_sse3   = arch_intel_sse3;
   ceph_arch_intel_sse2   = arch_intel_sse2;
+  ceph_arch_neon         = arch_neon;
 }
 
-TEST(ErasureCodePlugin, sse)
+TEST(ErasureCodePlugin, simd)
 {
   ceph_arch_probe();
+  vector<string> simd_variants;
+
   bool sse4 = ceph_arch_intel_pclmul &&
     ceph_arch_intel_sse42 && ceph_arch_intel_sse41 &&
     ceph_arch_intel_ssse3 && ceph_arch_intel_sse3 &&
     ceph_arch_intel_sse2;
   bool sse3 = ceph_arch_intel_ssse3 && ceph_arch_intel_sse3 &&
     ceph_arch_intel_sse2;
-  vector<string> sse_variants;
-  sse_variants.push_back("generic");
+  simd_variants.push_back("generic");
   if (!sse3)
     cerr << "SKIP sse3 plugin testing because CPU does not support it\n";
   else
-    sse_variants.push_back("sse3");
+    simd_variants.push_back("sse3");
   if (!sse4)
     cerr << "SKIP sse4 plugin testing because CPU does not support it\n";
   else
-    sse_variants.push_back("sse4");
+    simd_variants.push_back("sse4");
+  
+  if (!ceph_arch_neon)
+    cerr << "SKIP neon plugin testing because CPU does not support it\n";
+  else
+    simd_variants.push_back("neon");
 
 #define LARGE_ENOUGH 2048
   bufferptr in_ptr(buffer::create_page_aligned(LARGE_ENOUGH));
@@ -167,8 +195,8 @@ TEST(ErasureCodePlugin, sse)
   parameters["technique"] = "reed_sol_van";
   parameters["k"] = "2";
   parameters["m"] = "1";
-  for (vector<string>::iterator sse_variant = sse_variants.begin();
-       sse_variant != sse_variants.end();
+  for (vector<string>::iterator sse_variant = simd_variants.begin();
+       sse_variant != simd_variants.end();
        ++sse_variant) {
     //
     // load the plugin variant
@@ -227,8 +255,8 @@ int main(int argc, char **argv)
 
 /*
  * Local Variables:
- * compile-command: "cd ../.. ; make -j4 &&
- *   make unittest_erasure_code_plugin_jerasure &&
+ * compile-command: "cd ../.. ; \
+ *   make -j4 unittest_erasure_code_plugin_jerasure &&
  *   valgrind --tool=memcheck ./unittest_erasure_code_plugin_jerasure \
  *      --gtest_filter=*.* --log-to-stderr=true --debug-osd=20"
  * End:
