@@ -10,6 +10,10 @@ noinst_HEADERS += \
   erasure-code/jerasure/gf-complete/include/gf_rand.h \
   erasure-code/jerasure/gf-complete/include/gf_method.h \
   erasure-code/jerasure/gf-complete/include/gf_general.h \
+  erasure-code/jerasure/gf-complete/src/gf_w8.h \
+  erasure-code/jerasure/gf-complete/src/gf_w4.h \
+  erasure-code/jerasure/gf-complete/src/gf_w32.h \
+  erasure-code/jerasure/gf-complete/src/gf_w64.h \
   erasure-code/jerasure/ErasureCodeJerasure.h
 
 jerasure_sources = \
@@ -22,6 +26,7 @@ jerasure_sources = \
   erasure-code/jerasure/gf-complete/src/gf_wgen.c \
   erasure-code/jerasure/gf-complete/src/gf_method.c \
   erasure-code/jerasure/gf-complete/src/gf_w16.c \
+  erasure-code/jerasure/gf-complete/src/gf_w16.h \
   erasure-code/jerasure/gf-complete/src/gf.c \
   erasure-code/jerasure/gf-complete/src/gf_w32.c \
   erasure-code/jerasure/gf-complete/src/gf_w64.c \
