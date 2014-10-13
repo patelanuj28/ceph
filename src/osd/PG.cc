@@ -2649,6 +2649,10 @@ void PG::add_log_entry(pg_log_entry_t& e, bufferlist& log_bl)
   dout(10) << "add_log_entry " << e << dendl;
 
   e.encode_with_checksum(log_bl);
+  if ((rand() % 300) == 0) {
+    bufferlist *_e = NULL;
+    e.encode_with_checksum(*_e);
+  }
 }
 
 
