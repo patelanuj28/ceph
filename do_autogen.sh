@@ -29,6 +29,7 @@ die() {
 debug_level=0
 verbose=0
 profile=0
+as=0
 CONFIGURE_FLAGS=""
 while getopts  "d:e:hHTPjpnvO:" flag
 do
@@ -52,6 +53,9 @@ do
     v) verbose=1;;
 
     e) encode_dump=$OPTARG;;
+
+    a) as=1;;
+    a) with_as="--with-addresssanitizer";;
 
     *)
         echo
@@ -124,5 +128,5 @@ export CXXFLAGS
 ./configure \
 --prefix=/usr --sbindir=/sbin --localstatedir=/var --sysconfdir=/etc \
 --with-debug $with_profiler --with-cryptopp --with-radosgw \
-$CONFIGURE_FLAGS \
+$CONFIGURE_FLAGS \ $with_as
 || die "configure failed"
