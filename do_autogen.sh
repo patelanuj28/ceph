@@ -30,9 +30,8 @@ die() {
 debug_level=0
 verbose=0
 profile=0
-as=0
 CONFIGURE_FLAGS=""
-while getopts  "d:e:hHTPjpnvOa:" flag
+while getopts  "d:e:hHTPjpnvO:a" flag
 do
     case $flag in
     d) debug_level=$OPTARG;;
@@ -55,7 +54,6 @@ do
 
     e) encode_dump=$OPTARG;;
 
-    a) as=1;;
     a) with_as="--with-addresssanitizer";;
 
     *)
@@ -124,6 +122,7 @@ fi
 export CFLAGS
 export CXXFLAGS
 
+echo $with_as
 ./autogen.sh || die "autogen failed"
 
 ./configure \
