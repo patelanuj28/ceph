@@ -110,7 +110,7 @@ AM_CXXFLAGS += -fprofile-arcs -ftest-coverage -O0
 endif
 
 if WITH_ADDRESSSANITIZER
-AM_CFLAGS += -fsanitize=address -fno-omit-frame-pointer
+AM_CFLAGS += -fssanitize=address -fno-omit-frame-pointer
 AM_CXXFLAGS += -fsanitize=address -fno-omit-frame-pointer
 AM_LDFLAGS += -fsanitize=address
 endif
