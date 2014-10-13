@@ -261,6 +261,25 @@ AS_IF([test "$with_profiler" = "yes"],
       [AC_DEFINE([HAVE_PROFILER], [1], [Define if you have perftools profiler enabled])],
       [])
 
+# address sanitizer
+AC_ARG_WITH([addresssanitizer],
+            [AS_HELP_STRING([--with-addresssanitizer], [build with address sanitizer])],
+	    [case "${withval}" in
+	    	  yes) with_addresssanitizer=yes ;;
+		  no)  with_addresssanitizer=no ;;
+		  *) AC_MSG_ERROR([bad value ${withval} for --with-addresssanitizer]) ;;
+	     esac],
+            [with_addresssanitizer=no])
+#AS_IF([test "x$with_addresssanitizer" = xyes],
+	    #[AC_CHECK_LIB([profiler], [ProfilerFlush], [],
+	        	  #[AC_MSG_FAILURE([--with-profiler was given but libprofiler (libgoogle-perftools-dev on debian) not found])])],
+	    #[])
+AM_CONDITIONAL(WITH_ADDRESSSANITIZER, test "$with_addresssanitizer" = "yes")
+AS_IF([test "$with_addresssanitizer" = "yes"],
+      [AC_DEFINE([HAVE_ADDRESSSANITIZER], [1],
+			 [Define if you have have address sanitizer enabled])],
+       [])
+
 # debug crap?
 AC_ARG_WITH([debug],
             [AS_HELP_STRING([--with-debug], [build extra debug binaries])],
