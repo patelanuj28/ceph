@@ -17,6 +17,7 @@ do_autogen.sh: make a ceph build by running autogen, etc.
 -O <level>                       optimize
 -n                               use libnss
 -j                               with java
+-a                               use address sanitizer
 
 EOF
 }
@@ -31,7 +32,7 @@ verbose=0
 profile=0
 as=0
 CONFIGURE_FLAGS=""
-while getopts  "d:e:hHTPjpnvO:" flag
+while getopts  "d:e:hHTPjpnvOa:" flag
 do
     case $flag in
     d) debug_level=$OPTARG;;
@@ -128,5 +129,5 @@ export CXXFLAGS
 ./configure \
 --prefix=/usr --sbindir=/sbin --localstatedir=/var --sysconfdir=/etc \
 --with-debug $with_profiler --with-cryptopp --with-radosgw \
-$CONFIGURE_FLAGS \ $with_as
+$CONFIGURE_FLAGS $with_as \
 || die "configure failed"

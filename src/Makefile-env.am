@@ -109,6 +109,11 @@ AM_CFLAGS += -fprofile-arcs -ftest-coverage
 AM_CXXFLAGS += -fprofile-arcs -ftest-coverage -O0
 endif
 
+if WITH_ADDRESSSANITIZER
+AM_CFLAGS += -fsanitize=address -fno-omit-frame-pointer
+AM_CXXFLAGS += -fsanitize=address -fno-omit-frame-pointer
+endif
+
 CCAS = ${srcdir}/yasm-wrapper
 AM_CCASFLAGS = -f elf64
 
