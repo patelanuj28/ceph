@@ -269,7 +269,7 @@ AC_ARG_WITH([addresssanitizer],
 		  no)  with_addresssanitizer=no ;;
 		  *) AC_MSG_ERROR([bad value ${withval} for --with-addresssanitizer]) ;;
 	     esac],
-            [with_addresssanitizer=no])
+            [with_addresssanitizer=yes])
 #AS_IF([test "x$with_addresssanitizer" = xyes],
 	    #[AC_CHECK_LIB([profiler], [ProfilerFlush], [],
 	        	  #[AC_MSG_FAILURE([--with-profiler was given but libprofiler (libgoogle-perftools-dev on debian) not found])])],
