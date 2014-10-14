@@ -1824,6 +1824,12 @@ int rados_create_common(rados_t *pcluster,
   return 0;
 }
 
+extern "C" int rados_preinit()
+{
+  __asan_init_v1();
+  return 0;
+}
+
 extern "C" int rados_create(rados_t *pcluster, const char * const id)
 {
   CephInitParameters iparams(CEPH_ENTITY_TYPE_CLIENT);

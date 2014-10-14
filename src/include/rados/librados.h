@@ -291,6 +291,8 @@ void rados_version(int *major, int *minor, int *extra);
  * @{
  */
 
+int rados_preinit();
+
 /**
  * Create a handle for communicating with a RADOS cluster.
  *

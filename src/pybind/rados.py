@@ -224,6 +224,7 @@ Rados object in state %s." % (self.state))
             name = 'client.admin'
         if clustername is None:
             clustername = 'ceph'
+        self.librados.rados_preinit()
         ret = run_in_thread(self.librados.rados_create2,
                             (byref(self.cluster), c_char_p(clustername),
                             c_char_p(name), c_uint64(flags)))
