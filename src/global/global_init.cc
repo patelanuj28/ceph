@@ -242,7 +242,8 @@ void global_init_postfork_finish(CephContext *cct, int flags)
    * process is finished.  This way we can allow error messages to be
    * propagated in a manner that the user is able to see.
    */
-  if (!(flags & CINIT_FLAG_NO_CLOSE_STDERR)) {
+  if (!(cct->_conf->keepopen) &&
+      !(flags & CINIT_FLAG_NO_CLOSE_STDERR)) {
     int ret = global_init_shutdown_stderr(cct);
     if (ret) {
       derr << "global_init_daemonize: global_init_shutdown_stderr failed with "

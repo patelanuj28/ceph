@@ -27,6 +27,7 @@ OPTION(run_dir, OPT_STR, "/var/run/ceph")       // the "/var/run/ceph" dir, crea
 OPTION(admin_socket, OPT_STR, "$run_dir/$cluster-$name.asok") // default changed by common_preinit()
 
 OPTION(daemonize, OPT_BOOL, false) // default changed by common_preinit()
+OPTION(keepopen, OPT_BOOL, false)
 OPTION(pid_file, OPT_STR, "") // default changed by common_preinit()
 OPTION(chdir, OPT_STR, "/")
 OPTION(max_open_files, OPT_LONGLONG, 0)
