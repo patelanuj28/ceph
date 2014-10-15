@@ -114,7 +114,9 @@ libradosstriper::RadosStriperImpl::CompletionData::CompletionData
 (libradosstriper::RadosStriperImpl* striper,
  const std::string& soid,
  const std::string& lockCookie,
- librados::AioCompletionImpl *userCompletion) :
+ librados::AioCompletionImpl *userCompletion,
+ int n) :
+  RefCountedObject(striper->cct(), n),
   m_striper(striper), m_soid(soid), m_lockCookie(lockCookie), m_ack(0) {
   m_striper->get();
   if (userCompletion) m_ack = new librados::IoCtxImpl::C_aio_Ack(userCompletion);
@@ -136,8 +138,9 @@ libradosstriper::RadosStriperImpl::ReadCompletionData::ReadCompletionData
  librados::AioCompletionImpl *userCompletion,
  bufferlist* bl,
  std::vector<ObjectExtent>* extents,
- std::vector<bufferlist>* resultbl) :
-  CompletionData(striper, soid, lockCookie, userCompletion),
+ std::vector<bufferlist>* resultbl,
+ int n) :
+  CompletionData(striper, soid, lockCookie, userCompletion, n),
   m_bl(bl), m_extents(extents), m_resultbl(resultbl) {}
 
 libradosstriper::RadosStriperImpl::ReadCompletionData::~ReadCompletionData() {
@@ -164,8 +167,9 @@ libradosstriper::RadosStriperImpl::WriteCompletionData::WriteCompletionData
 (libradosstriper::RadosStriperImpl* striper,
  const std::string& soid,
  const std::string& lockCookie,
- librados::AioCompletionImpl *userCompletion) :
-  CompletionData(striper, soid, lockCookie, userCompletion), m_safe(0) {
+ librados::AioCompletionImpl *userCompletion,
+ int n) :
+  CompletionData(striper, soid, lockCookie, userCompletion, n), m_safe(0) {
   if (userCompletion) m_safe = new librados::IoCtxImpl::C_aio_Safe(userCompletion);
 }
 
@@ -381,7 +385,7 @@ static void striper_read_aio_req_complete(rados_striper_multi_completion_t c, vo
   libradosstriper::MultiAioCompletionImpl *comp =
     reinterpret_cast<libradosstriper::MultiAioCompletionImpl*>(c);
   cdata->complete(comp->rval);
-  delete cdata;
+  cdata->put();
 }
 
 static void rados_req_read_safe(rados_completion_t c, void *arg)
@@ -647,6 +651,7 @@ static void striper_write_req_complete(rados_striper_multi_completion_t c, void 
   libradosstriper::RadosStriperImpl::WriteCompletionData *cdata =
     reinterpret_cast<libradosstriper::RadosStriperImpl::WriteCompletionData*>(arg);
   cdata->m_striper->closeForWrite(cdata->m_soid, cdata->m_lockCookie);
+  cdata->put();
 }
 
 int libradosstriper::RadosStriperImpl::write_in_open_object(const std::string& soid,
@@ -668,7 +673,6 @@ int libradosstriper::RadosStriperImpl::write_in_open_object(const std::string& s
     // return result
     rc = c->get_return_value();
   }
-  delete cdata;
   c->put();
   return rc;
 }
@@ -681,9 +685,7 @@ static void striper_write_aio_req_complete(rados_striper_multi_completion_t c, v
   libradosstriper::MultiAioCompletionImpl *comp =
     reinterpret_cast<libradosstriper::MultiAioCompletionImpl*>(c);
   cdata->complete(comp->rval);
-  if (0 == comp->pending_safe) {
-    delete cdata;
-  }
+  cdata->put();
 }
 
 static void striper_write_aio_req_safe(rados_striper_multi_completion_t c, void *arg)
@@ -693,9 +695,7 @@ static void striper_write_aio_req_safe(rados_striper_multi_completion_t c, void 
   libradosstriper::MultiAioCompletionImpl *comp =
     reinterpret_cast<libradosstriper::MultiAioCompletionImpl*>(c);
   cdata->safe(comp->rval);
-  if (0 == comp->pending_complete) {
-    delete cdata;
-  }
+  cdata->put();
 }
 
 int libradosstriper::RadosStriperImpl::aio_write_in_open_object(const std::string& soid,
@@ -707,7 +707,9 @@ int libradosstriper::RadosStriperImpl::aio_write_in_open_object(const std::strin
 								uint64_t off) {
   // create a completion object
   m_ioCtxImpl->get();
-  WriteCompletionData *cdata = new WriteCompletionData(this, soid, lockCookie, c);
+  // we need 2 references as both striper_write_aio_req_complete and
+  // striper_write_aio_req_safe will release one
+  WriteCompletionData *cdata = new WriteCompletionData(this, soid, lockCookie, c, 2);
   c->io = m_ioCtxImpl;
   libradosstriper::MultiAioCompletionImpl *nc = new libradosstriper::MultiAioCompletionImpl;
   nc->set_complete_callback(cdata, striper_write_aio_req_complete);
