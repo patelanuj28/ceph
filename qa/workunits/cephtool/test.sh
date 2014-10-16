@@ -155,6 +155,18 @@ function expect_config_value()
   fi
 }
 
+function test_mon_injectargs()
+{
+  ceph tell osd.0 injectargs '--osd_debug_op_order --osd_debug_drop_ping_probability 444' >& $TMPFILE || return 1
+  check_response "osd_debug_drop_ping_probability = '444' osd_debug_op_order = 'true'"
+  ceph tell osd.0 injectargs --no-osd_debug_op_order >& $TMPFILE || return 1
+  check_response "osd_debug_op_order = 'false'"
+  ceph tell osd.0 injectargs -- --osd_debug_op_order >& $TMPFILE || return 1
+  check_response "osd_debug_op_order = 'true'"
+  ceph tell osd.0 injectargs -- '--osd_debug_op_order --osd_debug_drop_ping_probability 555' >& $TMPFILE || return 1
+  check_response "osd_debug_drop_ping_probability = '555' osd_debug_op_order = 'true'" 
+}
+
 function test_mon_injectargs_SI()
 {
   # Test SI units during injectargs and 'config set'
@@ -1264,6 +1276,7 @@ function test_osd_bench()
 
 set +x
 TESTS=(
+  mon_injectargs
   mon_injectargs_SI
   tiering
   auth
